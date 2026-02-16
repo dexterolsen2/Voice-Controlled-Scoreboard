@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Elite Voice Scoreboard v8</title>
+    <title>Elite Voice Scoreboard v9</title>
     <style>
         :root {
             --bg: #0f172a; --card: #1e293b; --text: #f8fafc;
@@ -47,7 +47,7 @@
             width: 100%; padding: 12px; background: var(--accent); color: white;
             border: none; border-radius: 10px; font-weight: bold; cursor: pointer; margin-top: 5px;
         }
-        .log { font-family: monospace; color: #fbbf24; font-size: 0.75rem; margin-top: 8px; text-align: center; height: 1.2em; overflow: hidden; }
+        .log { font-family: monospace; color: #fbbf24; font-size: 0.75rem; margin-top: 8px; text-align: center; height: 1.2em; overflow: hidden; background: #020617; padding: 2px; border-radius: 4px;}
     </style>
 </head>
 <body>
@@ -144,25 +144,16 @@
             recognition.lang = 'en-US';
 
             recognition.onresult = (e) => {
-                const transcript = e.results[e.results.length - 1][0].transcript.toLowerCase();
+                // FIXED: Trim transcript immediately to remove leading/trailing spaces
+                const transcript = e.results[e.results.length - 1][0].transcript.trim().toLowerCase();
                 if (vCmd.checked) processVoice(transcript);
             };
 
-            recognition.onend = () => {
-                recognition.start(); // Auto-restart
-            };
-
-            recognition.onerror = (e) => {
-                console.error("Speech error:", e.error);
-                if (e.error === 'not-allowed') alert("Microphone access denied.");
-            };
+            recognition.onend = () => { recognition.start(); };
         }
 
         startBtn.onclick = () => {
-            if (!recognition) {
-                alert("Speech recognition not supported in this browser.");
-                return;
-            }
+            if (!recognition) return alert("Browser not supported.");
             recognition.start();
             startBtn.style.display = 'none';
             statusText.innerText = "● SYSTEM ACTIVE";
@@ -170,25 +161,27 @@
         };
 
         function processVoice(text) {
-            logDisplay.innerText = `Heard: "${text}"`;
+            logDisplay.innerText = `[${text}]`; // Show brackets in log to verify space removal
 
-            // MUST include "scoreboard" or "score board"
+            // 1. GATEKEEPER: Check for "scoreboard" or "score board"
             if (!text.match(/score\s?board/)) return;
             
-            // Security phrase check
-            if (cToggle.checked && cWord.value && !text.includes(cWord.value.toLowerCase())) return;
-
-            // Timer controls
-            if (text.match(/start/)) { startTimer(); return; }
-            if (text.match(/pause|stop/)) { pauseTimer(); return; }
-            if (text.match(/reset/)) { 
-                timeLeft = lastSetTime; 
-                updateTimerDisplay(); 
-                speak("Reset"); 
-                saveSettings();
-                return; 
+            // 2. Security phrase check
+            if (cToggle.checked && cWord.value) {
+                const phrase = cWord.value.trim().toLowerCase();
+                if (!text.includes(phrase)) return;
             }
 
+            // 3. Status Check
+            if (text.match(/current/)) {
+                if (vConf.checked) speak(`Home ${scores.home}, Away ${scores.away}`);
+                return;
+            }
+
+            // 4. Timer logic
+            if (text.match(/start/)) { startTimer(); return; }
+            if (text.match(/pause|stop/)) { pauseTimer(); return; }
+            if (text.match(/reset/)) { timeLeft = lastSetTime; updateTimerDisplay(); speak("Reset"); return; }
             if (text.match(/duration|time/)) {
                 const mins = parseInt(text.match(/(\d+)\s*min/)?.[1] || 0);
                 const secs = parseInt(text.match(/(\d+)\s*sec/)?.[1] || 0);
@@ -200,11 +193,10 @@
                 return;
             }
 
-            // Scoring Logic
+            // 5. Scoring logic
             const numberMap = { 'one':1,'won':1,'two':2,'to':2,'too':2,'three':3,'tree':3,'four':4,'five':5 };
             let points = 0;
 
-            // Identify points
             const digitMatch = text.match(/\d+/);
             if (digitMatch) {
                 points = parseInt(digitMatch[0]);
@@ -216,7 +208,7 @@
 
             if (points === 0) return;
 
-            // Strict Subtraction Check (looking for dash or words)
+            // Strict Subtraction
             const isNegative = text.includes('-') || text.match(/minus|subtract|less|negative/);
             const finalPoints = isNegative ? -Math.abs(points) : Math.abs(points);
 
@@ -271,10 +263,7 @@
         [document.getElementById('homeBox'), document.getElementById('awayBox')].forEach(box => {
             const team = box.id === 'homeBox' ? 'home' : 'away';
             box.addEventListener('click', () => updateScore(team, 1, false));
-            box.addEventListener('contextmenu', (e) => { 
-                e.preventDefault(); 
-                updateScore(team, -1, false); 
-            });
+            box.addEventListener('contextmenu', (e) => { e.preventDefault(); updateScore(team, -1, false); });
         });
 
         loadSettings();
