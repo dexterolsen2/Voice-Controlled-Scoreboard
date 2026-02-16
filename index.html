@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Elite Voice Scoreboard v6</title>
+    <title>Elite Voice Scoreboard v7</title>
     <style>
         :root {
             --bg: #0f172a; --card: #1e293b; --text: #f8fafc;
@@ -49,7 +49,6 @@
         }
 
         .log { font-family: monospace; color: #fbbf24; font-size: 0.75rem; margin-top: 8px; text-align: center; height: 1.2em; overflow: hidden; }
-        .instructions { font-size: 0.75rem; color: #64748b; margin-top: 10px; max-width: 500px; }
     </style>
 </head>
 <body>
@@ -92,7 +91,7 @@
         <strong>Voice:</strong> "Start/Pause/Reset timer Scoreboard", "Game duration [min] minutes [sec] seconds Scoreboard", "Plus [number] Scoreboard [Home/Away]".
         <strong>Manual:</strong> Tap scores for +1, long-press for -1. Tap timer to start/stop.
     </div>
-
+    
     <script>
         const homeDisplay = document.getElementById('homeScore');
         const awayDisplay = document.getElementById('awayScore');
@@ -115,7 +114,6 @@
         const synth = window.speechSynthesis;
         let recognition;
 
-        // Load Persistence
         function saveSettings() {
             localStorage.setItem('scoreboardData', JSON.stringify({
                 scores, timeLeft, lastSetTime,
@@ -128,12 +126,12 @@
             const saved = localStorage.getItem('scoreboardData');
             if (saved) {
                 const data = JSON.parse(saved);
-                scores = data.scores;
+                scores = data.scores || {home:0, away:0};
                 timeLeft = data.timeLeft || 0;
                 lastSetTime = data.lastSetTime || 0;
-                vCmd.checked = data.vCmd;
-                vConf.checked = data.vConf;
-                cToggle.checked = data.cToggle;
+                vCmd.checked = data.vCmd ?? true;
+                vConf.checked = data.vConf ?? true;
+                cToggle.checked = data.cToggle ?? false;
                 cWord.value = data.cWord || "";
                 updateUI();
             }
@@ -146,6 +144,7 @@
         }
 
         if (SpeechRecognition) {
+            recognition = new Recognition(); // Simplified for clarity in logic
             recognition = new SpeechRecognition();
             recognition.continuous = true;
             recognition.lang = 'en-US';
@@ -166,46 +165,32 @@
         function processVoice(text) {
             logDisplay.innerText = `Detected: "${text}"`;
 
-            // Strict Filter: Must mention "scoreboard" (or common mishearings like "score board")
             if (!text.match(/score\s?board/)) return;
-
-            // Security Phrase
             if (cToggle.checked && cWord.value && !text.includes(cWord.value.toLowerCase())) return;
 
-            // 1. Timer Controls
+            // Timer Logic
             if (text.match(/start/)) { startTimer(); return; }
             if (text.match(/pause|stop/)) { pauseTimer(); return; }
-            if (text.match(/reset/)) { 
-                timeLeft = lastSetTime; 
-                updateTimerDisplay(); 
-                speak("Timer reset"); 
-                saveSettings(); 
-                return; 
-            }
+            if (text.match(/reset/)) { timeLeft = lastSetTime; updateTimerDisplay(); speak("Reset"); return; }
 
-            // 2. Game Duration (Regex for "X minutes and Y seconds")
-            if (text.match(/duration|time|limit/)) {
+            if (text.match(/duration|time/)) {
                 const mins = parseInt(text.match(/(\d+)\s*min/)?.[1] || 0);
                 const secs = parseInt(text.match(/(\d+)\s*sec/)?.[1] || 0);
                 lastSetTime = (mins * 60) + secs;
                 timeLeft = lastSetTime;
                 updateTimerDisplay();
-                speak(`Set to ${mins} minutes ${secs} seconds`);
+                speak("Timer set");
                 saveSettings();
                 return;
             }
 
-            // 3. Status Report
-            if (text.match(/current|what is/)) {
-                if (vConf.checked) speak(`Home ${scores.home}, Away ${scores.away}`);
-                return;
-            }
-
-            // 4. Scoring Logic (Fuzzy Matching)
+            // Scoring Logic
             let points = 0;
-            const numberMap = { 'one': 1, 'won': 1, 'two': 2, 'to': 2, 'too': 2, 'three': 3, 'tree': 3 };
+            const numberMap = { 'one': 1, 'won': 1, 'two': 2, 'to': 2, 'too': 2, 'three': 3, 'tree': 3, 'four': 4, 'five': 5 };
             
-            // Extract numbers from text (checks digits 1st, then word map)
+            // Check for negative indicators FIRST
+            const isNegative = text.match(/minus|subtract|less|negative|\-/) !== null;
+
             const digitMatch = text.match(/\d+/);
             if (digitMatch) {
                 points = parseInt(digitMatch[0]);
@@ -216,21 +201,20 @@
             }
 
             if (points === 0) return;
-            if (text.match(/minus|subtract|less/)) points = -points;
+            
+            // APPLY SIGN
+            const finalPoints = isNegative ? -Math.abs(points) : Math.abs(points);
 
-            // Team Detection (Home/Away/Homes/Aways)
-            if (text.match(/home/)) updateScore('home', points, true);
-            else if (text.match(/away/)) updateScore('away', points, true);
+            if (text.match(/home/)) updateScore('home', finalPoints, true);
+            else if (text.match(/away/)) updateScore('away', finalPoints, true);
         }
 
         function updateScore(team, amount, useVoice) {
             scores[team] += amount;
             updateUI();
-            
             const box = document.getElementById(`${team}Box`);
             box.style.borderColor = amount > 0 ? "var(--success)" : "var(--danger)";
             setTimeout(() => box.style.borderColor = "#334155", 400);
-
             if (useVoice && vConf.checked) speak(`${team} ${scores[team]}`);
             saveSettings();
         }
@@ -244,21 +228,16 @@
         function startTimer() {
             if (timerInterval) return;
             timerInterval = setInterval(() => {
-                if (timeLeft > 0) {
-                    timeLeft--;
-                    updateTimerDisplay();
-                } else {
-                    pauseTimer(true);
-                    speak("Time is up");
-                }
+                if (timeLeft > 0) { timeLeft--; updateTimerDisplay(); } 
+                else { pauseTimer(true); speak("Time is up"); }
             }, 1000);
-            speak("Timer started");
+            speak("Started");
         }
 
         function pauseTimer(isSilent = false) {
             clearInterval(timerInterval);
             timerInterval = null;
-            if (!isSilent) speak("Timer paused");
+            if (!isSilent) speak("Paused");
             saveSettings();
         }
 
@@ -269,18 +248,15 @@
 
         function speak(msg) {
             const u = new SpeechSynthesisUtterance(msg);
-            u.rate = 1.2;
+            u.rate = 1.3;
             synth.speak(u);
         }
 
-        // Manual Controls
+        // Manual
         [document.getElementById('homeBox'), document.getElementById('awayBox')].forEach(box => {
             const team = box.id === 'homeBox' ? 'home' : 'away';
             box.addEventListener('click', () => updateScore(team, 1, false));
-            box.addEventListener('contextmenu', (e) => {
-                e.preventDefault();
-                updateScore(team, -1, false);
-            });
+            box.addEventListener('contextmenu', (e) => { e.preventDefault(); updateScore(team, -1, false); });
         });
 
         loadSettings();
