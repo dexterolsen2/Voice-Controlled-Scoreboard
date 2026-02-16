@@ -3,43 +3,63 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Pro Voice Scoreboard</title>
+    <title>Elite Voice Scoreboard v5</title>
     <style>
+        :root {
+            --bg: #0f172a; --card: #1e293b; --text: #f8fafc;
+            --accent: #3b82f6; --success: #22c55e; --danger: #ef4444; --timer: #f43f5e;
+        }
         body {
-            font-family: 'Segoe UI', sans-serif;
-            display: flex; flex-direction: column; align-items: center; justify-content: center;
-            height: 100vh; margin: 0; background-color: #0f172a; color: #f8fafc;
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            background-color: var(--bg); color: var(--text);
+            display: flex; flex-direction: column; align-items: center;
+            min-height: 100vh; margin: 0; padding: 15px; box-sizing: border-box;
+        }
+        #status { font-size: 0.8rem; color: #64748b; margin-bottom: 5px; font-weight: bold; }
+        .listening { color: var(--success) !important; }
+
+        .timer-container {
+            font-size: 4.5rem; font-weight: 800; font-family: monospace;
+            color: var(--timer); margin-bottom: 15px; cursor: pointer;
+            text-shadow: 0 0 15px rgba(244, 63, 94, 0.3);
+            user-select: none; -webkit-user-select: none;
         }
 
-        #status { font-size: 1rem; margin-bottom: 20px; color: #64748b; text-transform: uppercase; letter-spacing: 1px; }
-        .listening { color: #22c55e !important; font-weight: bold; }
-
-        .scoreboard { display: flex; gap: 30px; text-align: center; }
-        .team-box { 
-            background: #1e293b; padding: 30px; border-radius: 20px; min-width: 160px; 
-            border: 2px solid #334155; transition: all 0.3s ease;
+        .scoreboard { display: flex; gap: 15px; margin-bottom: 15px; width: 100%; max-width: 500px; }
+        .team-box {
+            flex: 1; background: var(--card); padding: 20px 5px; border-radius: 20px;
+            text-align: center; border: 3px solid #334155; transition: 0.2s;
+            user-select: none; -webkit-user-select: none; cursor: pointer;
         }
-        .score { font-size: 7rem; font-weight: 800; margin: 0; line-height: 1; }
-        .team-label { color: #94a3b8; font-size: 1.2rem; margin-bottom: 10px; }
+        .score { font-size: 4.5rem; font-weight: 800; margin: 0; pointer-events: none; }
+        .team-label { color: #94a3b8; font-size: 0.9rem; pointer-events: none; }
 
-        .settings { margin-top: 30px; display: flex; align-items: center; gap: 10px; font-size: 0.9rem; color: #94a3b8; }
-        
-        button {
-            margin-top: 20px; padding: 12px 30px; font-size: 1rem; cursor: pointer;
-            background: #3b82f6; color: white; border: none; border-radius: 12px;
-            font-weight: 600; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        .panel {
+            background: #1e293b; padding: 15px; border-radius: 15px;
+            width: 100%; max-width: 500px; margin-bottom: 15px;
+        }
+        .setting-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; font-size: 0.9rem; }
+        input[type="text"] {
+            background: #0f172a; border: 1px solid #334155; color: white;
+            padding: 6px; border-radius: 5px; width: 100px;
+        }
+        .btn-main {
+            width: 100%; padding: 12px; background: var(--accent); color: white;
+            border: none; border-radius: 10px; font-weight: bold; cursor: pointer; margin-top: 5px;
         }
 
-        .console {
-            margin-top: 25px; width: 320px; background: #020617; padding: 15px;
-            border-radius: 12px; border: 1px solid #1e293b; font-family: monospace;
+        .instructions {
+            background: rgba(255,255,255,0.05); padding: 15px; border-radius: 15px;
+            font-size: 0.8rem; line-height: 1.5; color: #cbd5e1; width: 100%; max-width: 500px;
         }
-        .last-msg { color: #fbbf24; font-size: 0.9rem; }
+        .log { font-family: monospace; color: #fbbf24; font-size: 0.75rem; margin-top: 8px; text-align: center; height: 1.2em; }
     </style>
 </head>
 <body>
 
-    <div id="status">Mic Standby</div>
+    <div id="status">MIC STANDBY</div>
+    
+    <div class="timer-container" id="timerDisplay" onclick="toggleTimerManual()">00:00</div>
 
     <div class="scoreboard">
         <div class="team-box" id="homeBox">
@@ -52,131 +72,211 @@
         </div>
     </div>
 
-    <div class="settings">
-        <input type="checkbox" id="voiceToggle" checked>
-        <label for="voiceToggle">Enable Voice Confirmation</label>
-        <button id="undoBtn" style="margin-top:0; padding: 5px 15px; font-size: 0.8rem; background: #64748b;">Manual Undo</button>
+    <div class="panel">
+        <div class="setting-row">
+            <label>Voice Commands</label>
+            <input type="checkbox" id="voiceCmdToggle" onchange="saveSettings()">
+        </div>
+        <div class="setting-row">
+            <label>Voice Confirmation</label>
+            <input type="checkbox" id="voiceConfirmToggle" onchange="saveSettings()">
+        </div>
+        <div class="setting-row">
+            <label>Custom Security Phrase</label>
+            <div style="display:flex; gap:5px; align-items:center;">
+                <input type="checkbox" id="customToggle" onchange="saveSettings()">
+                <input type="text" id="customWord" placeholder="Phrase" oninput="saveSettings()">
+            </div>
+        </div>
+        <button id="startBtn" class="btn-main">INITIALIZE MICROPHONE</button>
+        <div id="lastCmd" class="log">Waiting...</div>
     </div>
 
-    <button id="startBtn">Start Microphone</button>
-
-    <div class="console">
-        <div id="lastCommand" class="last-msg">Say "Plus 2 Scoreboard Home"</div>
+    <div class="instructions">
+        <strong>Voice:</strong> "Start/Pause/Reset timer Scoreboard", "Game duration [min] min [sec] sec Scoreboard", "Plus [number] Scoreboard Home".<br>
+        <strong>Manual:</strong> Tap Timer to Start/Pause. Tap Score for +1, Long-press for -1.
     </div>
 
     <script>
         const homeDisplay = document.getElementById('homeScore');
         const awayDisplay = document.getElementById('awayScore');
+        const timerDisplay = document.getElementById('timerDisplay');
         const statusText = document.getElementById('status');
-        const logDisplay = document.getElementById('lastCommand');
+        const logDisplay = document.getElementById('lastCmd');
         const startBtn = document.getElementById('startBtn');
-        const voiceToggle = document.getElementById('voiceToggle');
-        const undoBtn = document.getElementById('undoBtn');
+        
+        const vCmd = document.getElementById('voiceCmdToggle');
+        const vConf = document.getElementById('voiceConfirmToggle');
+        const cToggle = document.getElementById('customToggle');
+        const cWord = document.getElementById('customWord');
 
         let scores = { home: 0, away: 0 };
-        let history = [];
+        let timeLeft = 0; 
+        let lastSetTime = 0;
+        let timerInterval = null;
 
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         const synth = window.speechSynthesis;
+        let recognition;
 
-        if (!SpeechRecognition) {
-            alert("Speech recognition is not supported in this browser. Use Chrome on Android.");
-        } else {
-            const recognition = new SpeechRecognition();
-            recognition.continuous = true;
-            recognition.lang = 'en-US';
-
-            startBtn.onclick = () => {
-                recognition.start();
-                startBtn.style.display = 'none';
-                statusText.innerText = "● Listening for 'Scoreboard'";
-                statusText.classList.add("listening");
+        // --- PERSISTENCE ---
+        function saveSettings() {
+            const data = {
+                scores, timeLeft, lastSetTime,
+                vCmd: vCmd.checked, vConf: vConf.checked,
+                cToggle: cToggle.checked, cWord: cWord.value
             };
+            localStorage.setItem('scoreboardData', JSON.stringify(data));
+        }
 
-            recognition.onresult = (event) => {
-                const transcript = event.results[event.results.length - 1][0].transcript.toLowerCase();
-                processCommand(transcript);
-            };
-
-            recognition.onend = () => recognition.start(); // Auto-restart
-
-            function processCommand(text) {
-                logDisplay.innerText = `Heard: "${text}"`;
-
-                // 1. STRICT GATEKEEPER: Must say "scoreboard"
-                if (!text.includes("scoreboard")) {
-                    return; 
-                }
-
-                // 2. UNDO LOGIC
-                if (text.includes("undo")) {
-                    performUndo();
-                    return;
-                }
-
-                // 3. IMPROVED NUMBER & SIGN DETECTION
-                let points = 0;
-                // Check for digits or words
-                if (text.match(/1|one/)) points = 1;
-                else if (text.match(/2|two/)) points = 2;
-                else if (text.match(/3|three/)) points = 3;
-
-                if (points === 0) return;
-
-                // FIX: Check for the word "minus" OR the symbol "-"
-                if (text.includes("minus") || text.includes("-")) {
-                    points = -Math.abs(points);
-                } else {
-                    points = Math.abs(points);
-                }
-
-                // 4. TEAM DETECTION
-                if (text.includes("home")) {
-                    updateScore('home', points);
-                } else if (text.includes("away")) {
-                    updateScore('away', points);
-                }
-            }
-
-            function updateScore(team, amount) {
-                history.push({ ...scores });
-                scores[team] += amount;
+        function loadSettings() {
+            const saved = localStorage.getItem('scoreboardData');
+            if (saved) {
+                const data = JSON.parse(saved);
+                scores = data.scores;
+                timeLeft = data.timeLeft;
+                lastSetTime = data.lastSetTime;
+                vCmd.checked = data.vCmd;
+                vConf.checked = data.vConf;
+                cToggle.checked = data.cToggle;
+                cWord.value = data.cWord;
                 
-                // Update UI
                 homeDisplay.innerText = scores.home;
                 awayDisplay.innerText = scores.away;
-                
-                // Feedback
-                const actionText = `${amount > 0 ? 'Added' : 'Subtracted'} ${Math.abs(amount)} ${team}`;
-                logDisplay.innerText = actionText;
-                
-                // Visual Flash
-                const box = document.getElementById(`${team}Box`);
-                box.style.borderColor = amount > 0 ? "#22c55e" : "#ef4444";
-                setTimeout(() => box.style.borderColor = "#334155", 600);
-
-                // 5. OPTIONAL VOICE CONFIRMATION
-                if (voiceToggle.checked) {
-                    const speech = new SpeechSynthesisUtterance(`${team} score is now ${scores[team]}`);
-                    speech.rate = 1.1;
-                    synth.speak(speech);
-                }
+                updateTimerDisplay();
+            } else {
+                // Defaults if no save found
+                vCmd.checked = true;
+                vConf.checked = true;
             }
-
-            function performUndo() {
-                if (history.length > 0) {
-                    scores = history.pop();
-                    homeDisplay.innerText = scores.home;
-                    awayDisplay.innerText = scores.away;
-                    logDisplay.innerText = "Last action undone.";
-                    if (voiceToggle.checked) {
-                        synth.speak(new SpeechSynthesisUtterance("Undo successful"));
-                    }
-                }
-            }
-            
-            undoBtn.onclick = performUndo;
         }
+
+        // --- VOICE LOGIC ---
+        if (SpeechRecognition) {
+            recognition = new SpeechRecognition();
+            recognition.continuous = true;
+            recognition.lang = 'en-US';
+            recognition.onresult = (e) => {
+                const transcript = e.results[e.results.length - 1][0].transcript.toLowerCase();
+                if (vCmd.checked) processVoice(transcript);
+            };
+            recognition.onend = () => recognition.start();
+        }
+
+        startBtn.onclick = () => {
+            recognition.start();
+            startBtn.style.display = 'none';
+            statusText.innerText = "● SYSTEM ACTIVE";
+            statusText.classList.add("listening");
+        };
+
+        function processVoice(text) {
+            logDisplay.innerText = `Heard: "${text}"`;
+
+            if (text.includes("current scoreboard")) {
+                if (vConf.checked) speak(`Home ${scores.home}, Away ${scores.away}`);
+                return;
+            }
+
+            if (!text.includes("scoreboard")) return;
+            if (cToggle.checked && cWord.value && !text.includes(cWord.value.toLowerCase())) return;
+
+            // Timer Voice Logic
+            if (text.includes("game duration")) {
+                const mins = parseInt(text.match(/(\d+)\s*minute/)?.[1] || 0);
+                const secs = parseInt(text.match(/(\d+)\s*second/)?.[1] || 0);
+                lastSetTime = (mins * 60) + secs;
+                timeLeft = lastSetTime;
+                updateTimerDisplay();
+                speak(`Set to ${mins} minutes ${secs} seconds`);
+                saveSettings();
+                return;
+            }
+            if (text.includes("start timer")) { startTimer(); return; }
+            if (text.includes("pause timer")) { pauseTimer(); return; }
+            if (text.includes("reset timer")) {
+                timeLeft = lastSetTime;
+                updateTimerDisplay();
+                speak("Timer reset");
+                saveSettings();
+                return;
+            }
+
+            // Scoring Logic
+            const numberMatch = text.match(/\d+/);
+            if (!numberMatch) return;
+            let points = parseInt(numberMatch[0]);
+            if (text.includes("minus") || text.includes("-") || text.includes("subtract")) points = -points;
+
+            if (text.includes("home")) updateScore('home', points, true);
+            else if (text.includes("away")) updateScore('away', points, true);
+        }
+
+        // --- CORE FUNCTIONS ---
+        function updateScore(team, amount, useVoice) {
+            scores[team] += amount;
+            homeDisplay.innerText = scores.home;
+            awayDisplay.innerText = scores.away;
+            
+            const box = document.getElementById(`${team}Box`);
+            box.style.borderColor = amount > 0 ? "var(--success)" : "var(--danger)";
+            setTimeout(() => box.style.borderColor = "#334155", 400);
+
+            if (useVoice && vConf.checked) speak(`${team} ${scores[team]}`);
+            saveSettings();
+        }
+
+        function updateTimerDisplay() {
+            const m = Math.floor(timeLeft / 60).toString().padStart(2, '0');
+            const s = (timeLeft % 60).toString().padStart(2, '0');
+            timerDisplay.innerText = `${m}:${s}`;
+        }
+
+        function startTimer(isSilent = false) {
+            if (timerInterval) return;
+            timerInterval = setInterval(() => {
+                if (timeLeft > 0) {
+                    timeLeft--;
+                    updateTimerDisplay();
+                    if (timeLeft % 5 === 0) saveSettings(); // Save every 5s to reduce disk writes
+                } else {
+                    pauseTimer(true);
+                    speak("Time is up");
+                }
+            }, 1000);
+            if (!isSilent) speak("Timer started");
+        }
+
+        function pauseTimer(isSilent = false) {
+            clearInterval(timerInterval);
+            timerInterval = null;
+            if (!isSilent) speak("Timer paused");
+            saveSettings();
+        }
+
+        function toggleTimerManual() {
+            if (timerInterval) pauseTimer();
+            else startTimer();
+        }
+
+        function speak(msg) {
+            const u = new SpeechSynthesisUtterance(msg);
+            u.rate = 1.2;
+            synth.speak(u);
+        }
+
+        // --- EVENT LISTENERS ---
+        [document.getElementById('homeBox'), document.getElementById('awayBox')].forEach(box => {
+            const team = box.id === 'homeBox' ? 'home' : 'away';
+            box.addEventListener('click', () => updateScore(team, 1, false));
+            box.addEventListener('contextmenu', (e) => {
+                e.preventDefault();
+                updateScore(team, -1, false);
+            });
+        });
+
+        // Initialize
+        loadSettings();
     </script>
 </body>
 </html>
