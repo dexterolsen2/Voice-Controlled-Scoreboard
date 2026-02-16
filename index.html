@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Elite Voice Scoreboard v5</title>
+    <title>Elite Voice Scoreboard v6</title>
     <style>
         :root {
             --bg: #0f172a; --card: #1e293b; --text: #f8fafc;
@@ -48,17 +48,13 @@
             border: none; border-radius: 10px; font-weight: bold; cursor: pointer; margin-top: 5px;
         }
 
-        .instructions {
-            background: rgba(255,255,255,0.05); padding: 15px; border-radius: 15px;
-            font-size: 0.8rem; line-height: 1.5; color: #cbd5e1; width: 100%; max-width: 500px;
-        }
-        .log { font-family: monospace; color: #fbbf24; font-size: 0.75rem; margin-top: 8px; text-align: center; height: 1.2em; }
+        .log { font-family: monospace; color: #fbbf24; font-size: 0.75rem; margin-top: 8px; text-align: center; height: 1.2em; overflow: hidden; }
+        .instructions { font-size: 0.75rem; color: #64748b; margin-top: 10px; max-width: 500px; }
     </style>
 </head>
 <body>
 
     <div id="status">MIC STANDBY</div>
-    
     <div class="timer-container" id="timerDisplay" onclick="toggleTimerManual()">00:00</div>
 
     <div class="scoreboard">
@@ -82,19 +78,18 @@
             <input type="checkbox" id="voiceConfirmToggle" onchange="saveSettings()">
         </div>
         <div class="setting-row">
-            <label>Custom Security Phrase</label>
+            <label>Security Phrase</label>
             <div style="display:flex; gap:5px; align-items:center;">
                 <input type="checkbox" id="customToggle" onchange="saveSettings()">
                 <input type="text" id="customWord" placeholder="Phrase" oninput="saveSettings()">
             </div>
         </div>
-        <button id="startBtn" class="btn-main">INITIALIZE MICROPHONE</button>
-        <div id="lastCmd" class="log">Waiting...</div>
+        <button id="startBtn" class="btn-main">INITIALIZE SYSTEM</button>
+        <div id="lastCmd" class="log">Ready...</div>
     </div>
 
     <div class="instructions">
-        <strong>Voice:</strong> "Start/Pause/Reset timer Scoreboard", "Game duration [min] min [sec] sec Scoreboard", "Plus [number] Scoreboard Home".<br>
-        <strong>Manual:</strong> Tap Timer to Start/Pause. Tap Score for +1, Long-press for -1.
+        <strong>Manual:</strong> Tap scores for +1, long-press for -1. Tap timer to start/stop.
     </div>
 
     <script>
@@ -119,14 +114,13 @@
         const synth = window.speechSynthesis;
         let recognition;
 
-        // --- PERSISTENCE ---
+        // Load Persistence
         function saveSettings() {
-            const data = {
+            localStorage.setItem('scoreboardData', JSON.stringify({
                 scores, timeLeft, lastSetTime,
                 vCmd: vCmd.checked, vConf: vConf.checked,
                 cToggle: cToggle.checked, cWord: cWord.value
-            };
-            localStorage.setItem('scoreboardData', JSON.stringify(data));
+            }));
         }
 
         function loadSettings() {
@@ -134,24 +128,22 @@
             if (saved) {
                 const data = JSON.parse(saved);
                 scores = data.scores;
-                timeLeft = data.timeLeft;
-                lastSetTime = data.lastSetTime;
+                timeLeft = data.timeLeft || 0;
+                lastSetTime = data.lastSetTime || 0;
                 vCmd.checked = data.vCmd;
                 vConf.checked = data.vConf;
                 cToggle.checked = data.cToggle;
-                cWord.value = data.cWord;
-                
-                homeDisplay.innerText = scores.home;
-                awayDisplay.innerText = scores.away;
-                updateTimerDisplay();
-            } else {
-                // Defaults if no save found
-                vCmd.checked = true;
-                vConf.checked = true;
+                cWord.value = data.cWord || "";
+                updateUI();
             }
         }
 
-        // --- VOICE LOGIC ---
+        function updateUI() {
+            homeDisplay.innerText = scores.home;
+            awayDisplay.innerText = scores.away;
+            updateTimerDisplay();
+        }
+
         if (SpeechRecognition) {
             recognition = new SpeechRecognition();
             recognition.continuous = true;
@@ -171,20 +163,29 @@
         };
 
         function processVoice(text) {
-            logDisplay.innerText = `Heard: "${text}"`;
+            logDisplay.innerText = `Detected: "${text}"`;
 
-            if (text.includes("current scoreboard")) {
-                if (vConf.checked) speak(`Home ${scores.home}, Away ${scores.away}`);
-                return;
-            }
+            // Strict Filter: Must mention "scoreboard" (or common mishearings like "score board")
+            if (!text.match(/score\s?board/)) return;
 
-            if (!text.includes("scoreboard")) return;
+            // Security Phrase
             if (cToggle.checked && cWord.value && !text.includes(cWord.value.toLowerCase())) return;
 
-            // Timer Voice Logic
-            if (text.includes("game duration")) {
-                const mins = parseInt(text.match(/(\d+)\s*minute/)?.[1] || 0);
-                const secs = parseInt(text.match(/(\d+)\s*second/)?.[1] || 0);
+            // 1. Timer Controls
+            if (text.match(/start/)) { startTimer(); return; }
+            if (text.match(/pause|stop/)) { pauseTimer(); return; }
+            if (text.match(/reset/)) { 
+                timeLeft = lastSetTime; 
+                updateTimerDisplay(); 
+                speak("Timer reset"); 
+                saveSettings(); 
+                return; 
+            }
+
+            // 2. Game Duration (Regex for "X minutes and Y seconds")
+            if (text.match(/duration|time|limit/)) {
+                const mins = parseInt(text.match(/(\d+)\s*min/)?.[1] || 0);
+                const secs = parseInt(text.match(/(\d+)\s*sec/)?.[1] || 0);
                 lastSetTime = (mins * 60) + secs;
                 timeLeft = lastSetTime;
                 updateTimerDisplay();
@@ -192,31 +193,38 @@
                 saveSettings();
                 return;
             }
-            if (text.includes("start timer")) { startTimer(); return; }
-            if (text.includes("pause timer")) { pauseTimer(); return; }
-            if (text.includes("reset timer")) {
-                timeLeft = lastSetTime;
-                updateTimerDisplay();
-                speak("Timer reset");
-                saveSettings();
+
+            // 3. Status Report
+            if (text.match(/current|what is/)) {
+                if (vConf.checked) speak(`Home ${scores.home}, Away ${scores.away}`);
                 return;
             }
 
-            // Scoring Logic
-            const numberMatch = text.match(/\d+/);
-            if (!numberMatch) return;
-            let points = parseInt(numberMatch[0]);
-            if (text.includes("minus") || text.includes("-") || text.includes("subtract")) points = -points;
+            // 4. Scoring Logic (Fuzzy Matching)
+            let points = 0;
+            const numberMap = { 'one': 1, 'won': 1, 'two': 2, 'to': 2, 'too': 2, 'three': 3, 'tree': 3 };
+            
+            // Extract numbers from text (checks digits 1st, then word map)
+            const digitMatch = text.match(/\d+/);
+            if (digitMatch) {
+                points = parseInt(digitMatch[0]);
+            } else {
+                for (let key in numberMap) {
+                    if (text.includes(key)) { points = numberMap[key]; break; }
+                }
+            }
 
-            if (text.includes("home")) updateScore('home', points, true);
-            else if (text.includes("away")) updateScore('away', points, true);
+            if (points === 0) return;
+            if (text.match(/minus|subtract|less/)) points = -points;
+
+            // Team Detection (Home/Away/Homes/Aways)
+            if (text.match(/home/)) updateScore('home', points, true);
+            else if (text.match(/away/)) updateScore('away', points, true);
         }
 
-        // --- CORE FUNCTIONS ---
         function updateScore(team, amount, useVoice) {
             scores[team] += amount;
-            homeDisplay.innerText = scores.home;
-            awayDisplay.innerText = scores.away;
+            updateUI();
             
             const box = document.getElementById(`${team}Box`);
             box.style.borderColor = amount > 0 ? "var(--success)" : "var(--danger)";
@@ -232,19 +240,18 @@
             timerDisplay.innerText = `${m}:${s}`;
         }
 
-        function startTimer(isSilent = false) {
+        function startTimer() {
             if (timerInterval) return;
             timerInterval = setInterval(() => {
                 if (timeLeft > 0) {
                     timeLeft--;
                     updateTimerDisplay();
-                    if (timeLeft % 5 === 0) saveSettings(); // Save every 5s to reduce disk writes
                 } else {
                     pauseTimer(true);
                     speak("Time is up");
                 }
             }, 1000);
-            if (!isSilent) speak("Timer started");
+            speak("Timer started");
         }
 
         function pauseTimer(isSilent = false) {
@@ -265,7 +272,7 @@
             synth.speak(u);
         }
 
-        // --- EVENT LISTENERS ---
+        // Manual Controls
         [document.getElementById('homeBox'), document.getElementById('awayBox')].forEach(box => {
             const team = box.id === 'homeBox' ? 'home' : 'away';
             box.addEventListener('click', () => updateScore(team, 1, false));
@@ -275,7 +282,6 @@
             });
         });
 
-        // Initialize
         loadSettings();
     </script>
 </body>
